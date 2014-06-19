@@ -44,35 +44,39 @@ def timeit(f):
 
 class SupEmb():
 
-    def __init__(self, Ua, Ub, A, B, XlA_pos, XlA_neg, XuA, XuB):
-        self.Ua = Ua 
-        logger.info("Ua %d x %d" % Ua.shape)
-        self.Ub = Ub
-        logger.info("Ub %d x %d" % Ub.shape)
-        self.A = A
-        logger.info("A %d x %d" % A.shape)
-        self.B = B
-        logger.info("B %d x %d" % B.shape)
-        self.XlA_pos = XlA_pos
-        logger.info("XlA_pos %d x %d" % XlA_pos.shape)
-        self.XlA_neg = XlA_neg
-        logger.info("XlA_neg %d x %d" % XlA_neg.shape)
-        self.XuA = XuA
-        logger.info("XuA %d x %d" % XuA.shape)
-        self.XuB = XuB
-        logger.info("XuB %d x %d" % XuB.shape)
-        assert(self.Ua.shape[0] == self.Ub.shape[0])
-        self.M = self.Ua.shape[0]
-        assert(self.Ub.shape[1] == self.B.shape[1])
-        assert(self.Ua.shape[1] == self.A.shape[1])
-        assert(self.XlA_pos.shape[1] == self.XlA_neg.shape[1])
-        assert(self.Ua.shape[0] + self.A.shape[0] == self.XuA.shape[1])
-        assert(self.Ub.shape[0] + self.B.shape[0] == self.XuB.shape[1])
-        self.d = self.Ua.shape[1]
-        self.h = self.Ub.shape[1]
+
+    def __init__(self, Ua=None, Ub=None, A=None, B=None, XlA_pos=None, XlA_neg=None, XuA=None, XuB=None):
+
+        if Ua is not None and Ub is not None and A is not None and B is not None \
+            and XlA_pos is not None and XlA_neg is not None  and XuA is not None and XuB is not None:
+            self.Ua = Ua 
+            logger.info("Ua %d x %d" % Ua.shape)
+            self.Ub = Ub
+            logger.info("Ub %d x %d" % Ub.shape)
+            self.A = A
+            logger.info("A %d x %d" % A.shape)
+            self.B = B
+            logger.info("B %d x %d" % B.shape)
+            self.XlA_pos = XlA_pos
+            logger.info("XlA_pos %d x %d" % XlA_pos.shape)
+            self.XlA_neg = XlA_neg
+            logger.info("XlA_neg %d x %d" % XlA_neg.shape)
+            self.XuA = XuA
+            logger.info("XuA %d x %d" % XuA.shape)
+            self.XuB = XuB
+            logger.info("XuB %d x %d" % XuB.shape)
+            assert(self.Ua.shape[0] == self.Ub.shape[0])
+            self.M = self.Ua.shape[0]
+            assert(self.Ub.shape[1] == self.B.shape[1])
+            assert(self.Ua.shape[1] == self.A.shape[1])
+            assert(self.XlA_pos.shape[1] == self.XlA_neg.shape[1])
+            assert(self.Ua.shape[0] + self.A.shape[0] == self.XuA.shape[1])
+            assert(self.Ub.shape[0] + self.B.shape[0] == self.XuB.shape[1])
+            self.d = self.Ua.shape[1]
+            self.h = self.Ub.shape[1]
 
         # parameters of the model.
-        self.w1 = 1.0 # weight for Rule 1.
+        self.w1 = 1.0  # weight for Rule 1.
         self.w2 = 1.0 # weight for Rule 2.
         self.w3 = 1.0 # weight for Rule 3.
         self.lambda_1 = 1.0
@@ -307,31 +311,53 @@ class SupEmb():
         return Z
 
 
-    def get_feature_index(self, base_path):
+    def load_pivots(self, pivots_filename):
+        pivots = []
+        pivots_file = open(pivots_filename)
+        for line in pivots_file:
+            pivots.append(line.strip().split()[1])
+        pivots_file.close()
+        return pivots
+
+
+    def load_feature_space(self, fname):
         """
-        Read the source_feats and target_feats files in the base_path directory
-        and compute their union. This is important when we concatenate 
-        projected features with the original features because the ids of the original
-        features must be consistent between the source and the target domains. 
+        Loads the nonpivots for the domain. 
         """
-        source_feats = []
-        target_feats = []
-        feat_index = []
-        source_feat_file = open("%s/source_feats" % base_path)
-        for line in source_feat_file:
-            feat = line.split('\t')[1].strip()
-            source_feats.append(feat)
-            if feat not in feat_index:
-                feat_index.append(feat)
-        source_feat_file.close()
-        target_feat_file = open("%s/target_feats" % base_path)
-        for line in target_feat_file:
-            feat = line.split('\t')[1].strip()
-            target_feats.append(feat)
-            if feat not in feat_index:
-                feat_index.append(feat)
-        target_feat_file.close()
-        return (source_feats, target_feats, feat_index)
+        D = []
+        F = open(fname)
+        for line in F:
+            D.append(line.split('\t')[1].strip())
+        F.close()
+        return D
+
+
+    # def get_word_feature_index(self, base_path):
+    #     """
+    #     Read the source_feats and target_feats files in the base_path directory
+    #     and compute their union. This is important when we concatenate 
+    #     projected features with the original features because the ids of the original
+    #     features must be consistent between the source and the target domains. 
+    #     These features are used to represent words (ie. pivots and non-pivots).
+    #     """
+    #     source_feats = []
+    #     target_feats = []
+    #     feat_index = []
+    #     source_feat_file = open("%s/source_feats" % base_path)
+    #     for line in source_feat_file:
+    #         feat = line.split('\t')[1].strip()
+    #         source_feats.append(feat)
+    #         if feat not in feat_index:
+    #             feat_index.append(feat)
+    #     source_feat_file.close()
+    #     target_feat_file = open("%s/target_feats" % base_path)
+    #     for line in target_feat_file:
+    #         feat = line.split('\t')[1].strip()
+    #         target_feats.append(feat)
+    #         if feat not in feat_index:
+    #             feat_index.append(feat)
+    #     target_feat_file.close()
+    #     return (source_feats, target_feats, feat_index)
 
 
     def concatenate_original_projected(self, Z, X, domain_feats, feat_index):
@@ -346,7 +372,10 @@ class SupEmb():
                     feat_name = domain_feats[j]
                     ind = feat_index.index(feat_name)
                     M[i, ind] = X[i,j]
-        return numpy.concatenate((Z, M), axis=1)
+        if Z is not None:
+            return numpy.concatenate((Z, M), axis=1)
+        else:
+            return M
 
 
     def save_embedding(self, filename, Q):
@@ -392,6 +421,8 @@ def train_logistic(pos_train, neg_train):
     neg_n = neg_train.shape[0]
     y =  numpy.concatenate((numpy.ones(pos_n), -1 * numpy.ones(neg_n)))
     X = numpy.concatenate((pos_train, neg_train), axis=0)
+    logger.info("Train Positive Feature Dimensions = %d" % pos_train.shape[1])
+    logger.info("Train Negative Feature Dimensions = %d" % neg_train.shape[1])
     LR.fit(X, y)
     logger.info("Train accuracy = %f " % LR.score(X, y))
     return LR
@@ -405,6 +436,8 @@ def test_logistic(pos_test, neg_test, model):
     neg_n = neg_test.shape[0]
     y =  numpy.concatenate((numpy.ones(pos_n), -1 * numpy.ones(neg_n)))
     X = numpy.concatenate((pos_test, neg_test), axis=0)
+    logger.info("Test Positive Feature Dimensions = %d" % pos_test.shape[1])
+    logger.info("Test Negative Feature Dimensions = %d" % neg_test.shape[1])
     accuracy = model.score(X, y)
     logger.info("Test accuracy = %f" % accuracy)
     return accuracy
@@ -431,7 +464,20 @@ def process(source_domain, target_domain):
     Pa, Pb = SE.get_projection(Q)
     pos_train = SE.project_instances(XlA_pos, Ua, A, Pa)
     neg_train = SE.project_instances(XlA_neg, Ua, A, Pa)
-    source_feats, target_feats, feat_index = SE.get_feature_index(base_path)
+    pivots = SE.load_pivots("../work/%s-%s/DI_list" % (source_domain, target_domain))
+    source_specific_feats = SE.load_feature_space("../work/%s-%s/source_specific_feats" % (source_domain, target_domain))
+    target_specific_feats = SE.load_feature_space("../work/%s-%s/target_specific_feats" % (source_domain, target_domain))
+    source_feats = pivots[:]
+    source_feats.extend(source_specific_feats)
+    target_feats = pivots[:]
+    target_feats.extend(target_specific_feats)
+    feat_index = pivots[:]
+    for w in source_specific_feats:
+        if w not in feat_index:
+            feat_index.append(w)
+    for w in target_specific_feats:
+        if w not in feat_index:
+            feat_index.append(w)
     pos_train = SE.concatenate_original_projected(pos_train, XlA_pos, source_feats, feat_index)
     neg_train = SE.concatenate_original_projected(neg_train, XlA_neg, source_feats, feat_index)
     model = train_logistic(pos_train, neg_train)
@@ -455,16 +501,37 @@ def no_adapt_baseline(source_domain, target_domain):
     XlA_neg = load_matrix("%s/XlA_neg.mtx" % base_path)
     XlB_pos = load_matrix("%s/XlB_pos.mtx" % base_path)
     XlB_neg = load_matrix("%s/XlB_neg.mtx" % base_path)
-    model = train_logistic(XlA_pos, XlA_neg)
-    test_logistic(XlB_pos, XlB_neg, model)
+    SE = SupEmb()
+    pivots = SE.load_pivots("../work/%s-%s/DI_list" % (source_domain, target_domain))
+    source_specific_feats = SE.load_feature_space("../work/%s-%s/source_specific_feats" % (source_domain, target_domain))
+    target_specific_feats = SE.load_feature_space("../work/%s-%s/target_specific_feats" % (source_domain, target_domain))
+    source_feats = pivots[:]
+    source_feats.extend(source_specific_feats)
+    target_feats = pivots[:]
+    target_feats.extend(target_specific_feats)
+    feat_index = pivots[:]
+    for w in source_specific_feats:
+        if w not in feat_index:
+            feat_index.append(w)
+    for w in target_specific_feats:
+        if w not in feat_index:
+            feat_index.append(w)
+    pos_train = SE.concatenate_original_projected(None, XlA_pos, source_feats, feat_index)
+    neg_train = SE.concatenate_original_projected(None, XlA_neg, source_feats, feat_index)
+    model = train_logistic(pos_train, neg_train)
+    pos_test = SE.concatenate_original_projected(None, XlB_pos, target_feats, feat_index)
+    neg_test = SE.concatenate_original_projected(None, XlB_neg, target_feats, feat_index)
+    test_logistic(pos_test, neg_test, model)
     pass
 
 
 if __name__ == "__main__":
-    source_domain = "testSource"
-    target_domain = "testTarget"
-    process(source_domain, target_domain)
-    #no_adapt_baseline(source_domain, target_domain)
+    source_domain = "books"
+    target_domain = "electronics"
+    #source_domain = "testSource"
+    #target_domain = "testTarget"
+    #process(source_domain, target_domain)
+    no_adapt_baseline(source_domain, target_domain)
     
 
 
