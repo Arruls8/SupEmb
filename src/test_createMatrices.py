@@ -108,28 +108,33 @@ class TestDATA():
         print self.D.pivots
         print self.D.src_train_pos_docs
         print self.D.src_feats
+        print self.D.source_specific_feats
         print self.D.XlA_pos.toarray()
-        XlA_pos = numpy.array([[1, 0, 0, 1, 1, 0, 0]])
+        XlA_pos = numpy.array([[1, 1, 1, 0, 0, 0, 0]])
         assert_array_equal(self.D.XlA_pos.toarray(), XlA_pos)
 
     def test_XlA_neg(self):
         """
         Testing XlA_neg
         """
+        print self.D.pivots
         print self.D.src_train_neg_docs
         print self.D.src_feats
+        print self.D.source_specific_feats
         print self.D.XlA_neg.toarray()
-        XlA_neg = numpy.array([[1, 0, 1, 0, 0, 1, 0]])
+        XlA_neg = numpy.array([[0, 0, 1, 1, 1, 0, 0]])
         assert_array_equal(self.D.XlA_neg.toarray(), XlA_neg)
 
     def test_XuA(self):
         """
         Testing XuA
         """
+        print self.D.pivots
         print self.D.src_train_unlab_docs
         print self.D.src_feats
+        print self.D.source_specific_feats
         print self.D.XuA.toarray()
-        XuA = numpy.array([[1 , 1, 0, 0, 0, 0, 1]])
+        XuA = numpy.array([[0, 0, 1, 0, 0, 1, 1]])
         assert_array_equal(self.D.XuA.toarray(), XuA)
 
     def test_XuB(self):
