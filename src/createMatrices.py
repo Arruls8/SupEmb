@@ -48,11 +48,13 @@ class DATA:
         self.src_train_docs.extend(self.src_train_neg_docs)
         self.src_train_docs.extend(self.src_train_unlab_docs)
 
-        "Computing source domain feature space..."
+        print "Computing source domain feature space..."
         self.src_feats = self.get_domain_feats(self.src_train_docs, self.pivots, self.source_specific_feats, self.d)
+        self.save_feature_space(self.src_feats, "%s/%s-%s/source_feats" % (self.base_dir, self.source_domain, self.target_domain))
+        
         print "Computing target domain feature space..."
         self.tgt_feats = self.get_domain_feats(self.tgt_train_unlab_docs, self.pivots, self.target_specific_feats, self.h)
-
+        self.save_feature_space(self.tgt_feats, "%s/%s-%s/target_feats" % (self.base_dir, self.source_domain, self.target_domain))
 
         # Create document representations.
         self.XlA_pos = self.get_doc_vect(self.src_train_pos_docs, self.pivots, self.source_specific_feats, self.src_feats)
@@ -71,6 +73,16 @@ class DATA:
         self.Ub, self.B = self.get_feat_representations(self.pivots, self.target_specific_feats, self.tgt_feats, self.tgt_train_unlab_docs)
         pass
 
+
+    def save_feature_space(self, feat_space, fname):
+        """
+        Save the feature space to a file. 
+        """
+        F = open(fname, 'w')
+        for (i, w) in enumerate(feat_space):
+            F.write("%d\t%s\n" % (i, w))
+        F.close()
+        pass
 
     def save_matrices(self, base_path):
         """
@@ -96,8 +108,7 @@ class DATA:
         Also remove from the docs any features that do not appear in the union of 
         pivous, nonpivots, and feat_space.
         """
-        S = pivots[:]
-        S.extend(nonpivots)
+        S = feat_space
         X = scipy.sparse.lil_matrix((len(docs), len(S)), dtype=float)
         for (i, doc) in enumerate(docs):
             for word in doc:

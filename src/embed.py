@@ -303,7 +303,50 @@ class SupEmb():
         right = numpy.dot(A, P.T)
         Z = numpy.concatenate((left.T, right.T), axis=1)
         Z = numpy.dot(Z, Y).T
+        logger.info("Dimensionality of the Projected Matrix %d x %d" % Z.shape)
         return Z
+
+
+    def get_feature_index(self, base_path):
+        """
+        Read the source_feats and target_feats files in the base_path directory
+        and compute their union. This is important when we concatenate 
+        projected features with the original features because the ids of the original
+        features must be consistent between the source and the target domains. 
+        """
+        source_feats = []
+        target_feats = []
+        feat_index = []
+        source_feat_file = open("%s/source_feats" % base_path)
+        for line in source_feat_file:
+            feat = line.split('\t')[1].strip()
+            source_feats.append(feat)
+            if feat not in feat_index:
+                feat_index.append(feat)
+        source_feat_file.close()
+        target_feat_file = open("%s/target_feats" % base_path)
+        for line in target_feat_file:
+            feat = line.split('\t')[1].strip()
+            target_feats.append(feat)
+            if feat not in feat_index:
+                feat_index.append(feat)
+        target_feat_file.close()
+        return (source_feats, target_feats, feat_index)
+
+
+    def concatenate_original_projected(self, Z, X, domain_feats, feat_index):
+        """
+        Concatenates original and the projected vectors. 
+        """
+        no_of_docs = X.shape[0]
+        M = numpy.zeros((no_of_docs, len(feat_index)), dtype=float)
+        for i in range(0, no_of_docs):
+            for j in range(0, X.shape[1]):
+                if X[i,j] != 0:
+                    feat_name = domain_feats[j]
+                    ind = feat_index.index(feat_name)
+                    M[i, ind] = X[i,j]
+        return numpy.concatenate((Z, M), axis=1)
 
 
     def save_embedding(self, filename, Q):
@@ -327,8 +370,6 @@ class SupEmb():
         """
         numpy.testing.assert_array_almost_equal_nulp(Q, Q.T)
         pass
-
-
     pass
 
 
@@ -390,11 +431,16 @@ def process(source_domain, target_domain):
     Pa, Pb = SE.get_projection(Q)
     pos_train = SE.project_instances(XlA_pos, Ua, A, Pa)
     neg_train = SE.project_instances(XlA_neg, Ua, A, Pa)
+    source_feats, target_feats, feat_index = SE.get_feature_index(base_path)
+    pos_train = SE.concatenate_original_projected(pos_train, XlA_pos, source_feats, feat_index)
+    neg_train = SE.concatenate_original_projected(neg_train, XlA_neg, source_feats, feat_index)
     model = train_logistic(pos_train, neg_train)
     XlB_pos = load_matrix("%s/XlB_pos.mtx" % base_path)
     XlB_neg = load_matrix("%s/XlB_neg.mtx" % base_path)
     pos_test = SE.project_instances(XlB_pos, Ub, B, Pb)
     neg_test = SE.project_instances(XlB_neg, Ub, B, Pb)
+    pos_test = SE.concatenate_original_projected(pos_test, XlB_pos, target_feats, feat_index)
+    neg_test = SE.concatenate_original_projected(neg_test, XlB_neg, target_feats, feat_index)
     test_logistic(pos_test, neg_test, model)
     pass
 
@@ -415,10 +461,10 @@ def no_adapt_baseline(source_domain, target_domain):
 
 
 if __name__ == "__main__":
-    source_domain = "books"
-    target_domain = "electronics"
+    source_domain = "testSource"
+    target_domain = "testTarget"
     process(source_domain, target_domain)
     #no_adapt_baseline(source_domain, target_domain)
-    #process("testSource", "testTarget")
+    
 
 
