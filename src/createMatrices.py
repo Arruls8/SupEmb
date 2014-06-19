@@ -30,6 +30,11 @@ class DATA:
         self.load_pivots("%s/%s-%s/DI_list" % (self.base_dir, self.source_domain, self.target_domain))
         self.load_nonpivots("%s/%s-%s/DS_list.1000" % (self.base_dir, self.source_domain, self.target_domain))
 
+        self.save_feature_space(self.source_specific_feats,
+            "../work/%s-%s/source_specific_feats" % (self.source_domain, self.target_domain))
+        self.save_feature_space(self.target_specific_feats,
+            "../work/%s-%s/target_specific_feats" % (self.source_domain, self.target_domain))
+
         # Load source and target, train and test documents.
         self.src_train_pos_docs =self.load_documents("%s/%s/train.positive" % (self.base_dir, self.source_domain))
         self.src_train_neg_docs =self.load_documents("%s/%s/train.negative" % (self.base_dir, self.source_domain))
@@ -50,19 +55,19 @@ class DATA:
 
         print "Computing source domain feature space..."
         self.src_feats = self.get_domain_feats(self.src_train_docs, self.pivots, self.source_specific_feats, self.d)
-        self.save_feature_space(self.src_feats, "%s/%s-%s/source_feats" % (self.base_dir, self.source_domain, self.target_domain))
+        self.save_feature_space(self.src_feats, "../work/%s-%s/source_feats" % (self.source_domain, self.target_domain))
         
         print "Computing target domain feature space..."
         self.tgt_feats = self.get_domain_feats(self.tgt_train_unlab_docs, self.pivots, self.target_specific_feats, self.h)
-        self.save_feature_space(self.tgt_feats, "%s/%s-%s/target_feats" % (self.base_dir, self.source_domain, self.target_domain))
+        self.save_feature_space(self.tgt_feats, "../work/%s-%s/target_feats" % (self.source_domain, self.target_domain))
 
         # Create document representations.
-        self.XlA_pos = self.get_doc_vect(self.src_train_pos_docs, self.pivots, self.source_specific_feats, self.src_feats)
-        self.XlA_neg = self.get_doc_vect(self.src_train_neg_docs, self.pivots, self.source_specific_feats, self.src_feats)
-        self.XuA = self.get_doc_vect(self.src_train_unlab_docs, self.pivots, self.source_specific_feats, self.src_feats)
-        self.XuB = self.get_doc_vect(self.tgt_train_unlab_docs, self.pivots, self.target_specific_feats, self.tgt_feats)
-        self.XlB_pos = self.get_doc_vect(self.tgt_test_pos_docs, self.pivots, self.target_specific_feats, self.tgt_feats)
-        self.XlB_neg = self.get_doc_vect(self.tgt_test_neg_docs, self.pivots, self.target_specific_feats, self.tgt_feats)
+        self.XlA_pos = self.get_doc_vect(self.src_train_pos_docs, self.pivots, self.source_specific_feats)
+        self.XlA_neg = self.get_doc_vect(self.src_train_neg_docs, self.pivots, self.source_specific_feats)
+        self.XuA = self.get_doc_vect(self.src_train_unlab_docs, self.pivots, self.source_specific_feats)
+        self.XuB = self.get_doc_vect(self.tgt_train_unlab_docs, self.pivots, self.target_specific_feats)
+        self.XlB_pos = self.get_doc_vect(self.tgt_test_pos_docs, self.pivots, self.target_specific_feats)
+        self.XlB_neg = self.get_doc_vect(self.tgt_test_neg_docs, self.pivots, self.target_specific_feats)
 
         # Create the complete train documents for the source
         self.src_train_docs = self.src_train_pos_docs[:]
@@ -84,6 +89,7 @@ class DATA:
         F.close()
         pass
 
+
     def save_matrices(self, base_path):
         """
         Save the matrices to disk.
@@ -101,14 +107,15 @@ class DATA:
         pass
 
 
-    def get_doc_vect(self, docs, pivots, nonpivots, feat_space):
+    def get_doc_vect(self, docs, pivots, nonpivots):
         """
         Get a vectors representing the documents using the union of pivots and 
         nonpivots as the feature space.
         Also remove from the docs any features that do not appear in the union of 
         pivous, nonpivots, and feat_space.
         """
-        S = feat_space
+        S = pivots[:]
+        S.extend(nonpivots)
         X = scipy.sparse.lil_matrix((len(docs), len(S)), dtype=float)
         for (i, doc) in enumerate(docs):
             for word in doc:
