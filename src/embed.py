@@ -84,7 +84,8 @@ class SupEmb():
         self.k2 = 5 # k for k-NN when computing W2
         self.k3 = 5 # k for k-NN when computing W3
         self.k3_bar = 5 # k for k-NN when computing W3_bar
-        self.dims = 500 # number of latent dimensions for the embedding
+        self.dims = 50 # number of latent dimensions for the embedding
+        self.mu = 1.0 # how much emphasise should we make on the projected features.
         pass
 
 
@@ -117,7 +118,7 @@ class SupEmb():
                 if (j in neighbours[i]) and (i in neighbours[j]):
                     # i and j are undirected nearest neighbours. 
                     if self.Y[i] == self.Y[j]:
-                        W2[i,j] = -self.lambda_2 * S[i,j]
+                        W2[i,j] = -self.lambda_1 * S[i,j]
                     else:
                         W2[i,j] = S[i,j]
                 
@@ -363,6 +364,8 @@ class SupEmb():
     def concatenate_original_projected(self, Z, X, domain_feats, feat_index):
         """
         Concatenates original and the projected vectors. 
+        Z is the projected features. 
+        X is the original features. 
         """
         no_of_docs = X.shape[0]
         M = numpy.zeros((no_of_docs, len(feat_index)), dtype=float)
@@ -372,10 +375,10 @@ class SupEmb():
                     feat_name = domain_feats[j]
                     ind = feat_index.index(feat_name)
                     M[i, ind] = X[i,j]
-        if Z is not None:
-            return numpy.concatenate((Z, M), axis=1)
-        else:
-            return M
+        
+
+        return numpy.concatenate((self.mu * Z, M), axis=1)
+        #return M
 
 
     def save_embedding(self, filename, Q):
@@ -443,7 +446,8 @@ def test_logistic(pos_test, neg_test, model):
     return accuracy
 
 
-def process(source_domain, target_domain):
+def process(source_domain, target_domain, w1=1.0, w2=1.0, w3=1.0, lambda_1=1.0, lambda_2=1.0,
+            k2=5, k3=5, k3_bar=5, dims=500):
     """
     Peform end-to-end processing.
     """
@@ -456,11 +460,22 @@ def process(source_domain, target_domain):
     XlA_neg = load_matrix("%s/XlA_neg.mtx" % base_path)
     XuA = load_matrix("%s/XuA.mtx" % base_path)
     XuB = load_matrix("%s/XuB.mtx" % base_path)
+
     SE = SupEmb(Ua, Ub, A, B, XlA_pos, XlA_neg, XuA, XuB)
+    SE.w1 = w1 
+    SE.w2 = w2 
+    SE.w3 = w3
+    SE.lambda_1 = lambda_1 
+    SE.lambda_2 = lambda_2 
+    SE.k2 = k2 
+    SE.k3 = k3 
+    SE.k3_bar = k3_bar 
+    SE.dims = dims
     Q = SE.get_embedding()
-    SE.save_embedding("%s/Q.mtx" % base_path, Q)
-    Q = SE.load_embedding("%s/Q.mtx" % base_path)
+    #SE.save_embedding("%s/Q.mtx" % base_path, Q)
+    #Q = SE.load_embedding("%s/Q.mtx" % base_path)
     #SE.check_symmetry(Q)
+
     Pa, Pb = SE.get_projection(Q)
     pos_train = SE.project_instances(XlA_pos, Ua, A, Pa)
     neg_train = SE.project_instances(XlA_neg, Ua, A, Pa)
@@ -487,8 +502,7 @@ def process(source_domain, target_domain):
     neg_test = SE.project_instances(XlB_neg, Ub, B, Pb)
     pos_test = SE.concatenate_original_projected(pos_test, XlB_pos, target_feats, feat_index)
     neg_test = SE.concatenate_original_projected(neg_test, XlB_neg, target_feats, feat_index)
-    test_logistic(pos_test, neg_test, model)
-    pass
+    return test_logistic(pos_test, neg_test, model)
 
 
 def no_adapt_baseline(source_domain, target_domain):
@@ -525,13 +539,102 @@ def no_adapt_baseline(source_domain, target_domain):
     pass
 
 
-if __name__ == "__main__":
+def batch_mode(source, target, stat_file):
+    """
+    Runs SupEmb using different parameter settings. 
+    """
+    lambda_1_vals = [0, 1.0, 10000.0]
+    lambda_2_vals = [0, 1.0, 10000.0]
+    k2_vals = [1, 5, 9] # k for k-NN when computing W2
+    k3_vals = [1, 5, 9] # k for k-NN when computing W3
+    k3_bar_vals = [1, 5, 9] # k for k-NN when computing W3_bar
+    dims_vals = [100, 200, 300] # number of latent dimensions for the embedding
+    res_file = open("../work/batch_%s_%s.csv" % (source, target), 'w')
+    res_file.write("w1, w2, w3, l1, l2, k2, k3, k3', dims, acc\n")
+    res_file.flush()
+
+    # Running 3 settings for Rule 1.
+    best_rule1 = {}
+    best_rule1_acc = 0
+    for dims in dims_vals:
+        w2 = w3 = l1 = l2 = k2 = k3 = k3_bar = 0
+        w1 = 1
+        acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+        res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+        res_file.flush()
+        if acc > best_rule1_acc:
+            best_rule1_acc = acc 
+            best_rule1 = {'w1':w1, 'w2':w2, 'w3':w3, 'l1':l1, 'l2':l2, 'k2':k2, 'k3':k3, 'k3_bar':k3_bar, 'dims':dims}
+    stat_file.write("%s, %s, %f, %d, " % (source, target, best_rule1_acc, best_rule1["dims"]))
+    stat_file.flush()
+
+    # Running 27 settings for Rule 2.
+    best_rule2 = {}
+    best_rule2_acc = 0
+    for dims in dims_vals:
+        for l1 in lambda_1_vals:
+            for k2 in k2_vals:
+                w1 = w3 = l2 = k3 = k3_bar = 0
+                w2 = 1
+                acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+                res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+                res_file.flush()
+                if acc > best_rule2_acc:
+                    best_rule2_acc = acc 
+                    best_rule2 = {'w1':w1, 'w2':w2, 'w3':w3, 'l1':l1, 'l2':l2, 'k2':k2, 'k3':k3, 'k3_bar':k3_bar, 'dims':dims}
+    stat_file.write("%f, %f, %d, %d, " % (best_rule2_acc, best_rule2["l1"], best_rule2["k2"], best_rule2["dims"]))
+    stat_file.flush()
+
+    # Running 81 settings for Rule 3.
+    best_rule3 = {}
+    best_rule3_acc = 0
+    for dims in dims_vals:
+        for l2 in lambda_2_vals:
+            for k3 in k3_vals:
+                for k3_bar in k3_bar_vals:
+                    w1 = w2 = l1 = k2 = 0
+                    w3 = 1
+                    acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+                    res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+                    res_file.flush()
+                    if acc > best_rule3_acc:
+                        best_rule3_acc = acc 
+                        best_rule3 = {'w1':w1, 'w2':w2, 'w3':w3, 'l1':l1, 'l2':l2, 'k2':k2, 'k3':k3, 'k3_bar':k3_bar, 'dims':dims}
+    stat_file.write("%f, %f, %d, %d, %d\n" % (best_rule3_acc, best_rule3["l2"], best_rule3["k3"], best_rule3["k3_bar"], best_rule3["dims"]))
+    stat_file.flush()
+
+    # Run 12 settings with the best parameter values for the three rules.
+    for (w1, w2, w3) in [(1,1,0), (1,0,1), (0,1,1), (1,1,1)]:
+        for dims in dims_vals:
+            k2 = best_rule2["k2"]
+            l1 = best_rule2["l1"]
+            l2 = best_rule3["l2"]
+            k3 = best_rule3["k3"]
+            k3_bar = best_rule3["k3_bar"]
+            acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+            res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+            res_file.flush()
+    res_file.close()
+    pass
+
+
+def run_batch_mode():
+    stat_file = open("../work/stats.csv", 'w')
+    stat_file.write("#source, target, R1, d, R2, l1, k2, d, R3, l2, k3, k3', d\n")
+    stat_file.flush()
     source_domain = "books"
-    target_domain = "electronics"
+    target_domain = "electronics"   
+    batch_mode(source_domain, target_domain, stat_file)
+    stat_file.close()
+   
+    pass
+
+if __name__ == "__main__":
+    run_batch_mode()
     #source_domain = "testSource"
     #target_domain = "testTarget"
+    #no_adapt_baseline(source_domain, target_domain)     
     #process(source_domain, target_domain)
-    no_adapt_baseline(source_domain, target_domain)
     
 
 
