@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 
+# debug info file
+debug_file = None
+
 def timeit(f):
 
     def timed(*args, **kw):
@@ -231,6 +234,7 @@ class SupEmb():
         Compute the embedding matrix P. 
         """
         # Compute the components for Rule 1.
+        global debug_file
         logger.info("Rule1")
         W1 = self.get_W1(self.M)
         L1 = self.get_Laplacian(W1)
@@ -275,7 +279,27 @@ class SupEmb():
         Qtop = numpy.concatenate((Q11, Q12), axis=1)
         Qbottom = numpy.concatenate((Q12.T, Q22), axis=1)
         Qleft = numpy.concatenate((Qtop, Qbottom), axis=0)
-        Q = Qleft - Qright 
+        Q = Qleft - (self.w1 * Qright) 
+
+        # Compute the values of Q1, Q2, and Q3 for debugging purposes.
+        if self.debug:
+            # Compute Q1.
+            O1 = numpy.trace(Qright)
+            # Compute Q2.
+            Q2_top = numpy.concatenate((F2, numpy.zeros((self.d, self.h))), axis=1)
+            Q2_bottom = numpy.concatenate((numpy.zeros((self.h, self.d)), numpy.zeros((self.h, self.h))), axis=1)
+            Q2 = numpy.concatenate((Q2_top, Q2_bottom), axis=0)
+            O2 = numpy.trace(Q2)
+            # Compute Q3.
+            Q3_top = numpy.concatenate((F3, numpy.zeros((self.d, self.h))), axis=1)
+            Q3_bottom = numpy.concatenate((numpy.zeros((self.h, self.d)), self.lambda_2 * F3_bar), axis=1)
+            Q3 = numpy.concatenate((Q3_top, Q3_bottom), axis=0)
+            O3 = numpy.trace(Q3)
+            debug_file.write("%s, %s, %s\n" % (str(O1), str(O2), str(O3)))
+            debug_file.flush()
+            logger.info("O1 = %s" % str(O1))
+            logger.info("O2 = %s" % str(O2))
+            logger.info("O3 = %s" % str(O3))
         return Q
 
 
@@ -286,7 +310,16 @@ class SupEmb():
         source and the target domains. 
         """
         logger.info("Dimensionality of Q: %d x %d" % Q.shape)
-        u, s, v = sparsesvd(scipy.sparse.csc_matrix(Q), self.dims)
+        matsize = numpy.sum(numpy.abs(Q))
+        logger.info("Sum of Q = %f" % matsize)
+        
+        if matsize == 0:
+            # cannot use sparsesvd to SVD a zero matrix. Use numpy.linalg.svd
+            u, s, v = numpy.linalg.svd(Q)
+            u = u[:self.dims, :]
+        else:
+            u, s, v = sparsesvd(scipy.sparse.csc_matrix(Q), self.dims)
+        
         #I = numpy.dot(u, v.T)
         #numpy.testing.assert_array_almost_equal_nulp(I, numpy.eye(self.dims))
         logger.info("Source feature space dimensions = %d" % self.d)
@@ -461,6 +494,11 @@ def process(source_domain, target_domain, w1=1.0, w2=1.0, w3=1.0, lambda_1=1.0, 
     XuA = load_matrix("%s/XuA.mtx" % base_path)
     XuB = load_matrix("%s/XuB.mtx" % base_path)
 
+    logger.info("w1 = %f, w2 = %f, w3 = %f" % (w1, w2, w3))
+    logger.info("dims = %d" % dims)
+    logger.info("l1 = %f, k2 = %d" % (lambda_1, k2))
+    logger.info("l2 = %f, k3 = %d, k3' = %d" % (lambda_2, k3, k3_bar))
+
     SE = SupEmb(Ua, Ub, A, B, XlA_pos, XlA_neg, XuA, XuB)
     SE.w1 = w1 
     SE.w2 = w2 
@@ -476,6 +514,7 @@ def process(source_domain, target_domain, w1=1.0, w2=1.0, w3=1.0, lambda_1=1.0, 
     #Q = SE.load_embedding("%s/Q.mtx" % base_path)
     #SE.check_symmetry(Q)
 
+    # check whether there are zero columns or rows in Q.
     Pa, Pb = SE.get_projection(Q)
     pos_train = SE.project_instances(XlA_pos, Ua, A, Pa)
     neg_train = SE.project_instances(XlA_neg, Ua, A, Pa)
@@ -543,15 +582,19 @@ def batch_mode(source, target, stat_file):
     """
     Runs SupEmb using different parameter settings. 
     """
+    global debug_file
     lambda_1_vals = [0, 1.0, 10000.0]
     lambda_2_vals = [0, 1.0, 10000.0]
     k2_vals = [1, 5, 9] # k for k-NN when computing W2
     k3_vals = [1, 5, 9] # k for k-NN when computing W3
     k3_bar_vals = [1, 5, 9] # k for k-NN when computing W3_bar
-    dims_vals = [100, 200, 300] # number of latent dimensions for the embedding
+    dims_vals = [10, 20, 30] # number of latent dimensions for the embedding
     res_file = open("../work/batch_%s_%s.csv" % (source, target), 'w')
     res_file.write("w1, w2, w3, l1, l2, k2, k3, k3', dims, acc\n")
     res_file.flush()
+
+    debug_file = open("../work/debug.csv", "w")
+    debug_file.write("# O1, O2, O3\n")
 
     # Running 3 settings for Rule 1.
     best_rule1 = {}
@@ -614,7 +657,8 @@ def batch_mode(source, target, stat_file):
             acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
             res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
             res_file.flush()
-    res_file.close()
+    res_file.close()    
+    debug_file.close()
     pass
 
 

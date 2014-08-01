@@ -232,8 +232,22 @@ def process(source, target):
     D.save_matrices(base_path)
     pass
 
+def batch_process():
+    """
+    Create matrices for all domain pairs."
+    """
+    domains = ["dvd", "books", "electronics", "kitchen"]
+    for source in domains:
+        for target in domains:
+            if source != target:
+                print "\n ======================"
+                print source, target
+                process(source, target)
+    pass
+
 if __name__ == "__main__":
-    process("books", "electronics")
+    batch_process()
+    #process("books", "dvds")
     #process("testSource", "testTarget")
 
 
