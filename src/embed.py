@@ -169,7 +169,8 @@ class SupEmb():
                 the list of neighbour row ids. 
         """
         # normalise rows in A to unit L2 length.
-        normA = preprocessing.normalize(A, norm='l2', copy=True)
+        #normA = preprocessing.normalize(A, norm='l2', copy=True)
+        normA = A
         # Compute similarity
         S = numpy.dot(normA, normA.T)
         N = numpy.argsort(S)
@@ -259,6 +260,7 @@ class SupEmb():
         # Compute the components for Rule 3.
         logger.info("Rule3")
         logger.info("Computing W3")
+        #ipdb.set_trace()
         W3 = self.get_W3(self.XuA, self.k3)
         L3 = self.get_Laplacian(W3)
         D3 = self.get_Dinv(self.XuA)
@@ -266,7 +268,6 @@ class SupEmb():
         part2 = numpy.dot(numpy.dot(D3, self.XuA), totA)
         F3 = numpy.dot(numpy.dot(part2.T, L3), part2)
 
-        ipdb.set_trace()
         logger.info("Computing W3_bar")
         W3_bar = self.get_W3(self.XuB, self.k3_bar)
         L3_bar = self.get_Laplacian(W3_bar)
