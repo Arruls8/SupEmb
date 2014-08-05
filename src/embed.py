@@ -28,6 +28,8 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
+import ipdb
+
 
 # debug info file
 debug_file = None
@@ -89,6 +91,7 @@ class SupEmb():
         self.k3_bar = 5 # k for k-NN when computing W3_bar
         self.dims = 50 # number of latent dimensions for the embedding
         self.mu = 1.0 # how much emphasise should we make on the projected features.
+        self.debug = True
         pass
 
 
@@ -263,6 +266,7 @@ class SupEmb():
         part2 = numpy.dot(numpy.dot(D3, self.XuA), totA)
         F3 = numpy.dot(numpy.dot(part2.T, L3), part2)
 
+        ipdb.set_trace()
         logger.info("Computing W3_bar")
         W3_bar = self.get_W3(self.XuB, self.k3_bar)
         L3_bar = self.get_Laplacian(W3_bar)
@@ -484,6 +488,7 @@ def process(source_domain, target_domain, w1=1.0, w2=1.0, w3=1.0, lambda_1=1.0, 
     """
     Peform end-to-end processing.
     """
+    logger.info("Source = %s, Target = %s" % (source_domain, target_domain))
     base_path = "../work/%s-%s" % (source_domain, target_domain)
     Ua = load_matrix("%s/Ua.mtx" % base_path)
     Ub = load_matrix("%s/Ub.mtx" % base_path)
@@ -593,14 +598,15 @@ def batch_mode(source, target, stat_file):
     res_file.write("w1, w2, w3, l1, l2, k2, k3, k3', dims, acc\n")
     res_file.flush()
 
-    debug_file = open("../work/debug.csv", "w")
+    debug_file = open("../work/debug/%s_%s_debug.csv" % (source, target), "w")
     debug_file.write("# O1, O2, O3\n")
 
     # Running 3 settings for Rule 1.
     best_rule1 = {}
     best_rule1_acc = 0
     for dims in dims_vals:
-        w2 = w3 = l1 = l2 = k2 = k3 = k3_bar = 0
+        w2 = w3 = 0
+        l1 = l2 = k2 = k3 = k3_bar = 1
         w1 = 1
         acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
         res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
@@ -617,7 +623,8 @@ def batch_mode(source, target, stat_file):
     for dims in dims_vals:
         for l1 in lambda_1_vals:
             for k2 in k2_vals:
-                w1 = w3 = l2 = k3 = k3_bar = 0
+                w1 = w3 = 0
+                l2 = k3 = k3_bar = 1
                 w2 = 1
                 acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
                 res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
@@ -635,7 +642,8 @@ def batch_mode(source, target, stat_file):
         for l2 in lambda_2_vals:
             for k3 in k3_vals:
                 for k3_bar in k3_bar_vals:
-                    w1 = w2 = l1 = k2 = 0
+                    w1 = w2 = 0
+                    l1 = k2 = 1
                     w3 = 1
                     acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
                     res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
@@ -662,19 +670,26 @@ def batch_mode(source, target, stat_file):
     pass
 
 
-def run_batch_mode():
-    stat_file = open("../work/stats.csv", 'w')
+def run_batch_mode(source, target):
+    stat_file = open("../work/debug/%s_%s_stats.csv" % (source, target), 'w')
     stat_file.write("#source, target, R1, d, R2, l1, k2, d, R3, l2, k3, k3', d\n")
-    stat_file.flush()
-    source_domain = "books"
-    target_domain = "electronics"   
-    batch_mode(source_domain, target_domain, stat_file)
-    stat_file.close()
-   
+    stat_file.flush() 
+    batch_mode(source, target, stat_file)
+    stat_file.close()   
+    pass
+
+
+def batch_source_fixed():
+    source = sys.argv[1].strip()
+    domains = ["dvd", "books", "electronics", "kitchen"]
+    for target in domains:
+        if source != target:
+            run_batch_mode(source, target)
     pass
 
 if __name__ == "__main__":
-    run_batch_mode()
+    #batch_source_fixed()
+    run_batch_mode("dvd", "kitchen")
     #source_domain = "testSource"
     #target_domain = "testTarget"
     #no_adapt_baseline(source_domain, target_domain)     

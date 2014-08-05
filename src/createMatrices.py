@@ -7,6 +7,8 @@ __author__ = 'Danushka Bollegala'
 __license__ = 'BSD'
 __date__ = "16/04/2014"
 
+import sys
+
 import scipy.sparse
 from scipy.io import mmwrite
 
@@ -232,6 +234,21 @@ def process(source, target):
     D.save_matrices(base_path)
     pass
 
+
+def source_batch_process():
+    """
+    Create matrices for all domain pairs."
+    """
+    domains = ["dvd", "books", "electronics", "kitchen"]
+    source = sys.argv[1].strip()
+    for target in domains:
+        if source != target:
+            print "\n ======================"
+            print source, target
+            process(source, target)
+    pass
+
+
 def batch_process():
     """
     Create matrices for all domain pairs."
@@ -246,7 +263,7 @@ def batch_process():
     pass
 
 if __name__ == "__main__":
-    batch_process()
+    source_batch_process()
     #process("books", "dvds")
     #process("testSource", "testTarget")
 
