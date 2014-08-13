@@ -411,12 +411,14 @@ class SupEmb():
             for j in range(0, X.shape[1]):
                 if X[i,j] != 0:
                     feat_name = domain_feats[j]
-                    ind = feat_index.index(feat_name)
-                    M[i, ind] = X[i,j]
+                    if feat_name in feat_index:
+                        ind = feat_index.index(feat_name)
+                        M[i, ind] = X[i,j]
         
-
-        return numpy.concatenate((self.mu * Z, M), axis=1)
-        #return M
+        if Z is not None:
+            return numpy.concatenate((self.mu * Z, M), axis=1)
+        else:
+            return M
 
 
     def save_embedding(self, filename, Q):
@@ -524,7 +526,7 @@ def process(source_domain, target_domain, w1=1.0, w2=1.0, w3=1.0, lambda_1=1.0, 
     Pa, Pb = SE.get_projection(Q)
     pos_train = SE.project_instances(XlA_pos, Ua, A, Pa)
     neg_train = SE.project_instances(XlA_neg, Ua, A, Pa)
-    pivots = SE.load_pivots("../work/%s-%s/DI_list" % (source_domain, target_domain))
+    pivots = SE.load_pivots("../SFA/work/%s-%s/DI_list" % (source_domain, target_domain))
     source_specific_feats = SE.load_feature_space("../work/%s-%s/source_specific_feats" % (source_domain, target_domain))
     target_specific_feats = SE.load_feature_space("../work/%s-%s/target_specific_feats" % (source_domain, target_domain))
     source_feats = pivots[:]
@@ -561,7 +563,7 @@ def no_adapt_baseline(source_domain, target_domain):
     XlB_pos = load_matrix("%s/XlB_pos.mtx" % base_path)
     XlB_neg = load_matrix("%s/XlB_neg.mtx" % base_path)
     SE = SupEmb()
-    pivots = SE.load_pivots("../work/%s-%s/DI_list" % (source_domain, target_domain))
+    pivots = SE.load_pivots("../SFA/work/%s-%s/DI_list" % (source_domain, target_domain))
     source_specific_feats = SE.load_feature_space("../work/%s-%s/source_specific_feats" % (source_domain, target_domain))
     target_specific_feats = SE.load_feature_space("../work/%s-%s/target_specific_feats" % (source_domain, target_domain))
     source_feats = pivots[:]
@@ -569,12 +571,12 @@ def no_adapt_baseline(source_domain, target_domain):
     target_feats = pivots[:]
     target_feats.extend(target_specific_feats)
     feat_index = pivots[:]
-    for w in source_specific_feats:
-        if w not in feat_index:
-            feat_index.append(w)
-    for w in target_specific_feats:
-        if w not in feat_index:
-            feat_index.append(w)
+    # for w in source_specific_feats:
+    #     if w not in feat_index:
+    #         feat_index.append(w)
+    # for w in target_specific_feats:
+    #     if w not in feat_index:
+    #         feat_index.append(w)
     pos_train = SE.concatenate_original_projected(None, XlA_pos, source_feats, feat_index)
     neg_train = SE.concatenate_original_projected(None, XlA_neg, source_feats, feat_index)
     model = train_logistic(pos_train, neg_train)
@@ -690,10 +692,10 @@ def batch_source_fixed():
 
 if __name__ == "__main__":
     #batch_source_fixed()
-    run_batch_mode("dvd", "kitchen")
-    #source_domain = "testSource"
-    #target_domain = "testTarget"
-    #no_adapt_baseline(source_domain, target_domain)     
+    #run_batch_mode("dvd", "kitchen")
+    source_domain = sys.argv[1].strip()
+    target_domain = sys.argv[2].strip()
+    no_adapt_baseline(source_domain, target_domain)     
     #process(source_domain, target_domain)
     
 
