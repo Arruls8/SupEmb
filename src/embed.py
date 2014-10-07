@@ -1,3 +1,4 @@
+#! /usr/bin/python
 """
 Loads the input matrices created by the createMatrices.py module and
 implements the supervised embedding (SupEmb) method.
@@ -91,7 +92,7 @@ class SupEmb():
         self.k3_bar = 5 # k for k-NN when computing W3_bar
         self.dims = 50 # number of latent dimensions for the embedding
         self.mu = 1.0 # how much emphasise should we make on the projected features.
-        self.debug = True
+        self.debug = False
         pass
 
 
@@ -142,7 +143,8 @@ class SupEmb():
         for i in range(0, n):
             for j in range(0, n):
                 # i and j are undirected nearest neighbours. 
-                W3[i,j] = S[i,j]
+                if (j in neighbours[i]) and (i in neighbours[j]):
+                    W3[i,j] = S[i,j]
         return W3
 
 
@@ -169,14 +171,18 @@ class SupEmb():
                 the list of neighbour row ids. 
         """
         # normalise rows in A to unit L2 length.
-        #normA = preprocessing.normalize(A, norm='l2', copy=True)
-        normA = A
+        normA = preprocessing.normalize(A, norm='l2', copy=True)
+        #normA = A
         # Compute similarity
         S = numpy.dot(normA, normA.T)
         N = numpy.argsort(S)
         neighbours = {}
         for i in range(S.shape[0]):
-            neighbours[i] = N[i,:][-k:]
+            neighbours[i] = list(N[i,:][::-1][: (k)])
+            #if i in neighbours[i]:
+            #    neighbours[i].remove(i)
+            #else:
+            #    neighbours[i].pop()
         return (S, neighbours)
 
 
@@ -244,7 +250,8 @@ class SupEmb():
         L1 = self.get_Laplacian(W1)
         U1 = self.get_U1()
         logger.info("Computing U1.T * L(W1) * U1")
-        Qright = numpy.dot(numpy.dot(U1.T, L1), U1)
+        #Qright = (1.0 / float(self.M)) * numpy.dot(numpy.dot(U1.T, L1), U1)  #balancing rule 1.
+        Qright = numpy.dot(numpy.dot(U1.T, L1), U1) 
 
         # Compute the components for Rule 2.
         logger.info("Rule2")
@@ -255,7 +262,9 @@ class SupEmb():
         totA = numpy.concatenate((self.Ua, self.A), axis=0)
         logger.info("Computing F2")
         part1 = numpy.dot(numpy.dot(D2, self.XlA), totA)
-        F2 = numpy.dot(numpy.dot(part1.T, L2), part1)
+        NlA = self.XlA.shape[0]
+        #F2 = (1.0 / float(NlA * NlA)) * numpy.dot(numpy.dot(part1.T, L2), part1) #balancing F2.
+        F2 = numpy.dot(numpy.dot(part1.T, L2), part1) 
         
         # Compute the components for Rule 3.
         logger.info("Rule3")
@@ -266,7 +275,9 @@ class SupEmb():
         D3 = self.get_Dinv(self.XuA)
         logger.info("Computing F3")
         part2 = numpy.dot(numpy.dot(D3, self.XuA), totA)
-        F3 = numpy.dot(numpy.dot(part2.T, L3), part2)
+        NuA = self.XuA.shape[0]
+        #F3 = (1.0 / float(NuA * NuA)) * numpy.dot(numpy.dot(part2.T, L3), part2) # balancing F3
+        F3 = numpy.dot(numpy.dot(part2.T, L3), part2) 
 
         logger.info("Computing W3_bar")
         W3_bar = self.get_W3(self.XuB, self.k3_bar)
@@ -275,16 +286,19 @@ class SupEmb():
         totB = numpy.concatenate((self.Ub, self.B), axis=0)
         logger.info("Computing F3_bar")
         part3 = numpy.dot(numpy.dot(D3_bar, self.XuB), totB)
+        NuB = self.XuB.shape[0]
+        #F3_bar = (1.0 / float(NuB * NuB)) * numpy.dot(numpy.dot(part3.T, L3_bar), part3) # balancing F3_bar
         F3_bar = numpy.dot(numpy.dot(part3.T, L3_bar), part3)
 
-        logger.info("Computing Q")
+        logger.info("Computing Q")        
+        #print "M = %d, NlA = %d, NuA = %d, XuB = %d" % (self.M, NlA, NuA, NuB) 
         Q11 = (self.w2 * F2) - (self.w3 * F3)
         Q12 = numpy.zeros((self.d, self.h), dtype=float)
-        Q22 = -self.w3 * self.lambda_2 * F3_bar
+        Q22 = -self.w3 * self.lambda_2 * F3_bar 
         Qtop = numpy.concatenate((Q11, Q12), axis=1)
         Qbottom = numpy.concatenate((Q12.T, Q22), axis=1)
         Qleft = numpy.concatenate((Qtop, Qbottom), axis=0)
-        Q = Qleft - (self.w1 * Qright) 
+        Q = Qleft - (self.w1 * Qright)
 
         # Compute the values of Q1, Q2, and Q3 for debugging purposes.
         if self.debug:
@@ -419,6 +433,8 @@ class SupEmb():
             return numpy.concatenate((self.mu * Z, M), axis=1)
         else:
             return M
+
+    
 
 
     def save_embedding(self, filename, Q):
@@ -586,6 +602,152 @@ def no_adapt_baseline(source_domain, target_domain):
     pass
 
 
+def get_combinations():
+    L = []
+    steps = [0, 1.0]
+    for w1 in steps:
+        for w2 in steps:
+            for w3 in steps:
+                if not (w1 == 0 and w2 == 0 and w3 == 0):
+                    L.append((w1, w2, w3))
+    return L
+
+
+def test_combinations(source, target):
+    """
+    Read the best parameter values for each individual rule from the stat file. 
+    Then combine the rules using those parameter values. 
+    """
+    stat_file = open("../work/debug/%s_%s_stats.csv" % (source, target))
+    res_file = open("../work/Large_batch_%s_%s.csv" % (source, target), 'w')
+    res_file.write("w1, w2, w3, l1, l2, k2, k3, k3', dims, acc\n")
+    line = stat_file.readline() # skip the header line.
+    p = stat_file.readline().strip().split(",")
+    dims_vals = [30] # number of latent dimensions for the embedding
+    for (w1, w2, w3) in get_combinations():
+        for dims in dims_vals:
+            k2 = int(p[6])
+            l1 = float(p[5])
+            l2 = float(p[9])
+            k3 = int(p[10])
+            k3_bar = int(p[11])
+            acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+            res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+            res_file.flush()
+    res_file.close()
+    pass
+
+
+def batch_rule3(source, target):
+    """
+    k3 and k3 bar values for rule3. 
+    """
+    k3_vals = [1,5,9]
+    k3_bar_vals = [1,5,9]
+    l2_vals = [0, 1, 10000.0]
+    res_file = open("../work/%s-%s_rule3.csv" % (source, target), 'w')
+    res_file.write("#k3, k3', l2, acc\n")
+    for l2 in l2_vals:
+        for k3 in k3_vals:
+            for k3_bar in k3_bar_vals:
+                dims = 30
+                w1 = w2 = 0
+                l1 = k2 = 1
+                w3 = 1
+                acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+                res_file.write("%d, %d, %d, %f\n" % (k3, k3_bar, l2, acc))
+                res_file.flush()
+    res_file.close()
+    pass
+
+
+# def batch_mode(source, target, stat_file):
+#     """
+#     Runs SupEmb using different parameter settings. 
+#     """
+#     global debug_file
+#     lambda_1_vals = [0, 1.0, 10000.0]
+#     lambda_2_vals = [0, 1.0, 10000.0]
+#     #k2_vals = [1, 5, 9] # k for k-NN when computing W2
+#     #k3_vals = [1, 5, 9] # k for k-NN when computing W3
+#     #k3_bar_vals = [1, 5, 9] # k for k-NN when computing W3_bar
+#     dims_vals = [10, 20, 30] # number of latent dimensions for the embedding
+#     res_file = open("../work/batch_%s_%s.csv" % (source, target), 'w')
+#     res_file.write("w1, w2, w3, l1, l2, k2, k3, k3', dims, acc\n")
+#     res_file.flush()
+
+#     debug_file = open("../work/debug/%s_%s_debug.csv" % (source, target), "w")
+#     debug_file.write("# O1, O2, O3\n")
+
+#     # Running 3 settings for Rule 1.
+#     best_rule1 = {}
+#     best_rule1_acc = 0
+#     for dims in dims_vals:
+#         w2 = w3 = 0
+#         l1 = l2 = k2 = k3 = k3_bar = 1
+#         w1 = 1
+#         acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+#         res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+#         res_file.flush()
+#         if acc > best_rule1_acc:
+#             best_rule1_acc = acc 
+#             best_rule1 = {'w1':w1, 'w2':w2, 'w3':w3, 'l1':l1, 'l2':l2, 'k2':k2, 'k3':k3, 'k3_bar':k3_bar, 'dims':dims}
+#     stat_file.write("%s, %s, %f, %d, " % (source, target, best_rule1_acc, best_rule1["dims"]))
+#     stat_file.flush()
+
+#     # Running 27 settings for Rule 2.
+#     best_rule2 = {}
+#     best_rule2_acc = 0
+#     for dims in dims_vals:
+#         for l1 in lambda_1_vals:
+#             for k2 in k2_vals:
+#                 w1 = w3 = 0
+#                 l2 = k3 = k3_bar = 1
+#                 w2 = 1
+#                 acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+#                 res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+#                 res_file.flush()
+#                 if acc > best_rule2_acc:
+#                     best_rule2_acc = acc 
+#                     best_rule2 = {'w1':w1, 'w2':w2, 'w3':w3, 'l1':l1, 'l2':l2, 'k2':k2, 'k3':k3, 'k3_bar':k3_bar, 'dims':dims}
+#     stat_file.write("%f, %f, %d, %d, " % (best_rule2_acc, best_rule2["l1"], best_rule2["k2"], best_rule2["dims"]))
+#     stat_file.flush()
+
+#     # Running 81 settings for Rule 3.
+#     best_rule3 = {}
+#     best_rule3_acc = 0
+#     for dims in dims_vals:
+#         for l2 in lambda_2_vals:
+#             for k3 in k3_vals:
+#                 for k3_bar in k3_bar_vals:
+#                     w1 = w2 = 0
+#                     l1 = k2 = 1
+#                     w3 = 1
+#                     acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+#                     res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+#                     res_file.flush()
+#                     if acc > best_rule3_acc:
+#                         best_rule3_acc = acc 
+#                         best_rule3 = {'w1':w1, 'w2':w2, 'w3':w3, 'l1':l1, 'l2':l2, 'k2':k2, 'k3':k3, 'k3_bar':k3_bar, 'dims':dims}
+#     stat_file.write("%f, %f, %d, %d, %d\n" % (best_rule3_acc, best_rule3["l2"], best_rule3["k3"], best_rule3["k3_bar"], best_rule3["dims"]))
+#     stat_file.flush()
+
+#     # Run 12 settings with the best parameter values for the three rules.
+#     for (w1, w2, w3) in [(1,1,0), (1,0,1), (0,1,1), (1,1,1)]:
+#         for dims in dims_vals:
+#             k2 = best_rule2["k2"]
+#             l1 = best_rule2["l1"]
+#             l2 = best_rule3["l2"]
+#             k3 = best_rule3["k3"]
+#             k3_bar = best_rule3["k3_bar"]
+#             acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+#             res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+#             res_file.flush()
+#     res_file.close()    
+#     debug_file.close()
+#     pass
+
+
 def batch_mode(source, target, stat_file):
     """
     Runs SupEmb using different parameter settings. 
@@ -593,10 +755,8 @@ def batch_mode(source, target, stat_file):
     global debug_file
     lambda_1_vals = [0, 1.0, 10000.0]
     lambda_2_vals = [0, 1.0, 10000.0]
-    k2_vals = [1, 5, 9] # k for k-NN when computing W2
-    k3_vals = [1, 5, 9] # k for k-NN when computing W3
-    k3_bar_vals = [1, 5, 9] # k for k-NN when computing W3_bar
-    dims_vals = [10, 20, 30] # number of latent dimensions for the embedding
+    k_vals = [1, 5, 9]
+    dims_vals = [10, 50, 100] # number of latent dimensions for the embedding
     res_file = open("../work/batch_%s_%s.csv" % (source, target), 'w')
     res_file.write("w1, w2, w3, l1, l2, k2, k3, k3', dims, acc\n")
     res_file.flush()
@@ -625,7 +785,7 @@ def batch_mode(source, target, stat_file):
     best_rule2_acc = 0
     for dims in dims_vals:
         for l1 in lambda_1_vals:
-            for k2 in k2_vals:
+            for k2 in k_vals:
                 w1 = w3 = 0
                 l2 = k3 = k3_bar = 1
                 w2 = 1
@@ -643,17 +803,17 @@ def batch_mode(source, target, stat_file):
     best_rule3_acc = 0
     for dims in dims_vals:
         for l2 in lambda_2_vals:
-            for k3 in k3_vals:
-                for k3_bar in k3_bar_vals:
-                    w1 = w2 = 0
-                    l1 = k2 = 1
-                    w3 = 1
-                    acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
-                    res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
-                    res_file.flush()
-                    if acc > best_rule3_acc:
-                        best_rule3_acc = acc 
-                        best_rule3 = {'w1':w1, 'w2':w2, 'w3':w3, 'l1':l1, 'l2':l2, 'k2':k2, 'k3':k3, 'k3_bar':k3_bar, 'dims':dims}
+            for k in k_vals:
+                w1 = w2 = 0
+                l1 = k2 = 1
+                w3 = 1
+                k3 = k3_bar = k
+                acc = process(source, target, w1, w2, w3, l1, l2, k2, k3, k3_bar, dims)
+                res_file.write("%f, %f, %f, %f, %f, %d, %d, %d, %d, %f\n" % (w1, w2, w3, l1, l2, k2, k3, k3_bar, dims, acc))
+                res_file.flush()
+                if acc > best_rule3_acc:
+                    best_rule3_acc = acc 
+                    best_rule3 = {'w1':w1, 'w2':w2, 'w3':w3, 'l1':l1, 'l2':l2, 'k2':k2, 'k3':k3, 'k3_bar':k3_bar, 'dims':dims}
     stat_file.write("%f, %f, %d, %d, %d\n" % (best_rule3_acc, best_rule3["l2"], best_rule3["k3"], best_rule3["k3_bar"], best_rule3["dims"]))
     stat_file.flush()
 
@@ -687,16 +847,42 @@ def batch_source_fixed():
     domains = ["dvd", "books", "electronics", "kitchen"]
     for target in domains:
         if source != target:
-            run_batch_mode(source, target)
+            #run_batch_mode(source, target)
+            test_combinations(source, target)
     pass
 
+
+def batch_dimensions():
+    source = "dvd"
+    target = "electronics"
+    res_file = open("../work/%s-%s-dims.csv" % (source, target), 'w')
+    # all parameters are set to 1 except for the dimensionality.
+    res_file.write("Dims, R1, R2, R3, R1+R2, R1+R3, R2+R3, R1+R2+R3\n")
+    for d in range(10, 300, 20):
+        print d 
+        res_file.write("%d, " % d)
+        for (w1, w2, w3) in [(1,0,0), (0,1,0), (0,0,1), (1,1,0), (1,0,1), (0,1,1), (1,1,1)]:
+            val = process(source, target, w1=w1, w2=w2, w3=w3, lambda_1=1.0, lambda_2=1.0,
+                k2=1, k3=1, k3_bar=1, dims=d)
+            print "w1 = %d, w2 = %d, w3 = %d, acc = %f" % (w1, w2, w3, val)
+            res_file.write("%f, " % val)
+            res_file.flush()
+        res_file.write("\n")
+        res_file.flush()
+    res_file.close() 
+    pass
+
+
 if __name__ == "__main__":
-    #batch_source_fixed()
+    batch_source_fixed()
     #run_batch_mode("dvd", "kitchen")
-    source_domain = sys.argv[1].strip()
-    target_domain = sys.argv[2].strip()
-    no_adapt_baseline(source_domain, target_domain)     
-    #process(source_domain, target_domain)
+    #source_domain = sys.argv[1].strip()
+    #target_domain = sys.argv[2].strip()
+    #test_combinations(source_domain, target_domain)
+    #no_adapt_baseline(source_domain, target_domain)     
+    #process("books", "dvd", w1=1, w2=1.0, w3=0, lambda_1=0, lambda_2=10000, k2=2, k3=9, k3_bar=9, dims=30)
+    #batch_dimensions()
+    #batch_rule3()
     
 
 
